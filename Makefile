@@ -1,3 +1,5 @@
+SHELL := /bin/bash
+
 .PHONY: clean data setup
 
 # Setup virtual environment and install dependencies
