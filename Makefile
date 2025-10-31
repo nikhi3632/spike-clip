@@ -1,4 +1,17 @@
-.PHONY: clean
+.PHONY: clean data setup
+
+# Setup virtual environment and install dependencies
+setup:
+	@echo "Setting up virtual environment..."
+	@python3 -m venv venv
+	@echo "Installing requirements..."
+	@source ./venv/bin/activate && pip install -r requirements.txt
+	@echo "Setup complete."
+
+# Fetch data using fetch_data.py
+data:
+	@echo "Fetching data..."
+	@python3 fetch_data.py
 
 # Remove Python bytecode caches and compiled files across the repo
 clean:
