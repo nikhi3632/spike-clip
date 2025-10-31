@@ -1,0 +1,6 @@
+# Ignore
+data/
+docs/
+outputs/
+lambda-labs-key.pem
+venv/
