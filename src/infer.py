@@ -1,9 +1,7 @@
-# infer.py (updated with config logging)
 import os
 import time
 import torch
 from tqdm import tqdm
-# from thop import profile
 from models.coarse_reconstruction import CoarseSNN
 from data_loader import get_loader
 from utils.helpers import get_device
@@ -37,6 +35,7 @@ LABELS = ['accordion','airplanes','anchor','ant','barrel','bass','beaver','binoc
           'scissors','scorpion','seahorse','snoopy','soccerball','stapler','starfish','stegosaurus','stopsign',
           'strawberry','sunflower','tick','trilobite','umbrella','watch','waterlilly','wheelchair','wildcat',
           'windsorchair','wrench','yinyang','background']
+
 test_loader = get_loader(DATA_DIR, LABELS, split="test", batch_size=BATCH_SIZE)
 
 # ----------------------------
@@ -48,55 +47,47 @@ model.load_state_dict(torch.load(checkpoint_path, map_location=device))
 model.eval()
 
 # ----------------------------
-# Metrics collection
+# Inference + Metrics
 # ----------------------------
-latencies = []
-total_samples = 0
+latencies, total_samples = [], 0
 torch.cuda.reset_peak_memory_stats()
 
 with torch.no_grad():
     for spikes, _, _ in tqdm(test_loader, desc="Inference"):
-        spikes = spikes.to(device)
+        spikes = spikes.to(device).float()
+
         start = time.time()
         outputs = model(spikes)
+
+        # Normalize output for fairness
+        omin = outputs.amin(dim=(2,3), keepdim=True)
+        omax = outputs.amax(dim=(2,3), keepdim=True)
+        outputs = (outputs - omin) / (omax - omin + 1e-6)
+
         end = time.time()
         latencies.append(end - start)
         total_samples += spikes.size(0)
 
-# Compute metrics
+# ----------------------------
+# Compute Metrics
+# ----------------------------
 avg_latency, std_latency = compute_latency(latencies)
 throughput = compute_throughput(total_samples, sum(latencies))
 memory_usage = compute_memory_usage()
 power_usage = compute_power_usage()
 
-# FLOPs & Params (optional)
-# dummy_input = torch.rand(1, TIME_STEPS, 224, 224).to(device)
-# flops, params = profile(model, inputs=(dummy_input,), verbose=False)
-
-# ----------------------------
-# Prepare metrics text
-# ----------------------------
 metrics_text = (
-    "===== INFERENCE METRICS =====\n"
-    f"Timestamp: {time.ctime()}\n"
-    f"Device: {device}\n"
-    f"Dataset: {DATA_DIR}\n"
-    f"Number of classes: {len(LABELS)}\n"
-    f"Labels: {LABELS}\n"
-    f"TIME_STEPS: {TIME_STEPS}, BATCH_SIZE: {BATCH_SIZE}\n\n"
+    "\n===== INFERENCE METRICS =====\n"
     f"Avg Latency per batch: {avg_latency:.4f}s ± {std_latency:.4f}s\n"
     f"Throughput: {throughput:.2f} samples/sec\n"
     f"GPU Memory Usage: {memory_usage:.2f} MB\n"
     f"Average Power Draw: {power_usage:.2f} W\n"
-    # f"FLOPs: {flops/1e9:.2f} GFLOPs | Params: {params/1e6:.2f} M\n"
     "==============================\n"
 )
 
-# ----------------------------
-# Print & Save metrics
-# ----------------------------
 print(metrics_text)
 
+# Save
 with open(METRICS_FILE, "w") as f:
     f.write(metrics_text)
 

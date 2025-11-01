@@ -1,9 +1,6 @@
-# test.py
 import os
 import torch
 import matplotlib.pyplot as plt
-import torchvision.transforms as T
-
 from models.coarse_reconstruction import CoarseSNN
 from data_loader import get_loader
 from utils.helpers import get_device
@@ -14,7 +11,7 @@ from utils.helpers import get_device
 DATA_DIR = os.path.join(os.path.dirname(__file__), "../data/u-caltech")
 TIME_STEPS = 25
 BATCH_SIZE = 1
-CHECKPOINT_PATH = "checkpoints/coarse_snn.pth"
+SAVE_PATH = "test_visualization.png"
 
 # ----------------------------
 # Device
@@ -38,55 +35,49 @@ LABELS = ['accordion','airplanes','anchor','ant','barrel','bass','beaver','binoc
           'windsorchair','wrench','yinyang','background']
 
 test_loader = get_loader(DATA_DIR, LABELS, split="test", batch_size=BATCH_SIZE)
-spikes, _, label_idx = next(iter(test_loader))
-label_name = LABELS[label_idx[0]]
-
-spikes = spikes.to(device)
 
 # ----------------------------
 # Model
 # ----------------------------
 model = CoarseSNN(time_steps=TIME_STEPS).to(device)
-model.load_state_dict(torch.load(CHECKPOINT_PATH, map_location=device))
+checkpoint_path = "checkpoints/coarse_snn.pth"
+model.load_state_dict(torch.load(checkpoint_path, map_location=device))
 model.eval()
 
 # ----------------------------
-# Inference
+# Visualization
 # ----------------------------
+spikes, labels, _ = next(iter(test_loader))
+spikes = spikes.to(device).float()
+
 with torch.no_grad():
-    output = model(spikes)
+    outputs = model(spikes)
+    omin = outputs.amin(dim=(2,3), keepdim=True)
+    omax = outputs.amax(dim=(2,3), keepdim=True)
+    outputs = (outputs - omin) / (omax - omin + 1e-6)
+
+# Temporal sum (input preview)
+input_frame = spikes.sum(dim=1).squeeze().cpu().numpy()
+
+# Output (normalized)
+output_img = outputs.squeeze().permute(1,2,0).cpu().numpy()
 
 # ----------------------------
-# Visualization Prep
+# Plot and save
 # ----------------------------
-# Sum spikes across time for visualization
-input_sum = spikes.sum(dim=1).squeeze().cpu()
-input_sum = (input_sum - input_sum.min()) / (input_sum.max() - input_sum.min() + 1e-8)
+plt.figure(figsize=(10, 5))
+plt.subplot(1, 2, 1)
+plt.title(f"Input (Event Frame Sum)\nLabel: {labels[0]}")
+plt.imshow(input_frame, cmap='gray')
+plt.axis("off")
 
-# Output postprocessing & contrast enhancement
-output_img = output[0].detach().cpu()
-output_img = torch.sigmoid(output_img)  # ensure values [0,1]
-output_img = torch.clamp(output_img * 5, 0, 1)  # contrast boost
-
-# Convert to numpy
-input_np = input_sum.numpy()
-output_np = output_img.permute(1, 2, 0).numpy()
-
-# ----------------------------
-# Plot
-# ----------------------------
-fig, axs = plt.subplots(1, 2, figsize=(10, 5))
-axs[0].imshow(input_np, cmap="gray")
-axs[0].set_title(f"Input (Event Frame Sum)\nLabel: {label_name}")
-axs[0].axis("off")
-
-axs[1].imshow(output_np)
-axs[1].set_title("Reconstructed Output")
-axs[1].axis("off")
+plt.subplot(1, 2, 2)
+plt.title("Reconstructed Output")
+plt.imshow(output_img)
+plt.axis("off")
 
 plt.tight_layout()
-os.makedirs("outputs", exist_ok=True)
-plt.savefig("outputs/test_visualization.png", dpi=300)
+plt.savefig(SAVE_PATH, dpi=300)
 plt.show()
 
-print("Saved visualization to outputs/test_visualization.png")
+print(f"Visualization saved to {SAVE_PATH}")
