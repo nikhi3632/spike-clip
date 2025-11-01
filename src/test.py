@@ -1,8 +1,8 @@
-# test.py — GPU inference test + visualization
-import torch
+# test.py
 import os
+import torch
 import matplotlib.pyplot as plt
-from torchvision.transforms.functional import to_pil_image
+import torchvision.transforms as T
 
 from models.coarse_reconstruction import CoarseSNN
 from data_loader import get_loader
@@ -16,93 +16,77 @@ TIME_STEPS = 25
 BATCH_SIZE = 1
 CHECKPOINT_PATH = "checkpoints/coarse_snn.pth"
 
-LABELS = [
-    'accordion','airplanes','anchor','ant','barrel','bass','beaver','binocular','bonsai','brain','brontosaurus',
-    'buddha','butterfly','camera','cannon','car','ceilingfan','cellphone','chair','chandelier','cougarbody',
-    'cougarface','crab','crayfish','crocodile','crocodilehead','cup','dalmatian','dollarbill','dolphin',
-    'dragonfly','electricguitar','elephant','emu','euphonium','ewer','faces','ferry','flamingo','flamingohead',
-    'garfield','gerenuk','gramophone','grandpiano','hawksbill','headphone','hedgehog','helicopter','ibis',
-    'inlineskate','joshuatree','kangaroo','ketch','lamp','laptop','Leopards','llama','lobster','lotus',
-    'mandolin','mayfly','menorah','metronome','minaret','Motorbikes','nautilus','octopus','okapi','pagoda',
-    'panda','pigeon','pizza','platypus','pyramid','revolver','rhino','rooster','saxophone','schooner',
-    'scissors','scorpion','seahorse','snoopy','soccerball','stapler','starfish','stegosaurus','stopsign',
-    'strawberry','sunflower','tick','trilobite','umbrella','watch','waterlilly','wheelchair','wildcat',
-    'windsorchair','wrench','yinyang','background'
-]
-
 # ----------------------------
-# Device Setup
+# Device
 # ----------------------------
 device = get_device("auto")
 print(f"Using device: {device}")
 
 # ----------------------------
-# Load Dataset
+# Dataset
 # ----------------------------
-test_loader = get_loader(DATA_DIR, LABELS, split="test", batch_size=BATCH_SIZE)
-spikes, images, labels = next(iter(test_loader))
+LABELS = ['accordion','airplanes','anchor','ant','barrel','bass','beaver','binocular','bonsai','brain','brontosaurus',
+          'buddha','butterfly','camera','cannon','car','ceilingfan','cellphone','chair','chandelier','cougarbody',
+          'cougarface','crab','crayfish','crocodile','crocodilehead','cup','dalmatian','dollarbill','dolphin',
+          'dragonfly','electricguitar','elephant','emu','euphonium','ewer','faces','ferry','flamingo','flamingohead',
+          'garfield','gerenuk','gramophone','grandpiano','hawksbill','headphone','hedgehog','helicopter','ibis',
+          'inlineskate','joshuatree','kangaroo','ketch','lamp','laptop','Leopards','llama','lobster','lotus',
+          'mandolin','mayfly','menorah','metronome','minaret','Motorbikes','nautilus','octopus','okapi','pagoda',
+          'panda','pigeon','pizza','platypus','pyramid','revolver','rhino','rooster','saxophone','schooner',
+          'scissors','scorpion','seahorse','snoopy','soccerball','stapler','starfish','stegosaurus','stopsign',
+          'strawberry','sunflower','tick','trilobite','umbrella','watch','waterlilly','wheelchair','wildcat',
+          'windsorchair','wrench','yinyang','background']
+
+test_loader = get_loader(DATA_DIR, LABELS, split="test", batch_size=BATCH_SIZE, shuffle=True)
+spikes, _, label_idx = next(iter(test_loader))
+label_name = LABELS[label_idx[0]]
 
 spikes = spikes.to(device)
-print(f"Loaded real sample from dataset with shape: {spikes.shape}")
 
 # ----------------------------
-# Load Model
+# Model
 # ----------------------------
 model = CoarseSNN(time_steps=TIME_STEPS).to(device)
-
-if os.path.exists(CHECKPOINT_PATH):
-    model.load_state_dict(torch.load(CHECKPOINT_PATH, map_location=device))
-    print(f"Loaded trained weights from {CHECKPOINT_PATH}")
-else:
-    print("⚠️ No checkpoint found. Using randomly initialized weights.")
-
+model.load_state_dict(torch.load(CHECKPOINT_PATH, map_location=device))
 model.eval()
 
 # ----------------------------
-# Forward Pass (Inference Test)
+# Inference
 # ----------------------------
 with torch.no_grad():
     output = model(spikes)
 
 # ----------------------------
-# Convert for Visualization
+# Visualization Prep
 # ----------------------------
-# input visualization (sum over time steps)
-input_image = spikes[0].sum(dim=0)  # [224,224]
-input_image = (input_image - input_image.min()) / (input_image.max() - input_image.min())
+# Sum spikes across time for visualization
+input_sum = spikes.sum(dim=1).squeeze().cpu()
+input_sum = (input_sum - input_sum.min()) / (input_sum.max() - input_sum.min() + 1e-8)
 
-# output visualization
-output_image = output[0].detach().cpu()
-output_image = (output_image - output_image.min()) / (output_image.max() - output_image.min())
+# Output postprocessing & contrast enhancement
+output_img = output[0].detach().cpu()
+output_img = torch.sigmoid(output_img)  # ensure values [0,1]
+output_img = torch.clamp(output_img * 5, 0, 1)  # contrast boost
+
+# Convert to numpy
+input_np = input_sum.numpy()
+output_np = output_img.permute(1, 2, 0).numpy()
 
 # ----------------------------
 # Plot
 # ----------------------------
-plt.figure(figsize=(10,5))
-plt.subplot(1,2,1)
-plt.title("Input (Event Frame Sum)")
-plt.imshow(input_image.cpu(), cmap="gray")
-plt.axis("off")
+fig, axs = plt.subplots(1, 2, figsize=(10, 5))
+axs[0].imshow(input_np, cmap="gray")
+axs[0].set_title(f"Input (Event Frame Sum)\nLabel: {label_name}")
+axs[0].axis("off")
 
-plt.subplot(1,2,2)
-plt.title("Reconstructed Output")
-plt.imshow(to_pil_image(output_image))
-plt.axis("off")
+axs[1].imshow(output_np)
+axs[1].set_title("Reconstructed Output")
+axs[1].axis("off")
 
 plt.tight_layout()
-plt.savefig("test_visualization.png")
+os.makedirs("outputs", exist_ok=True)
+plt.savefig("outputs/test_visualization.png", dpi=300)
 plt.show()
 
-print("Saved visualization to test_visualization.png")
-
-# ----------------------------
-# Output Stats
-# ----------------------------
-print("\n===== TEST OUTPUT (REAL SAMPLE) =====")
-print(f"Input shape:   {tuple(spikes.shape)}")
-print(f"Output shape:  {tuple(output.shape)}")
-print(f"Output device: {output.device}")
-print(f"Output dtype:  {output.dtype}")
-print(f"Output mean:   {output.mean().item():.4f}")
-print(f"Output std:    {output.std().item():.4f}")
-print("========================")
+print("Saved visualization to outputs/test_visualization.png")
