@@ -37,7 +37,7 @@ LABELS = ['accordion','airplanes','anchor','ant','barrel','bass','beaver','binoc
           'strawberry','sunflower','tick','trilobite','umbrella','watch','waterlilly','wheelchair','wildcat',
           'windsorchair','wrench','yinyang','background']
 
-test_loader = get_loader(DATA_DIR, LABELS, split="test", batch_size=BATCH_SIZE, shuffle=True)
+test_loader = get_loader(DATA_DIR, LABELS, split="test", batch_size=BATCH_SIZE)
 spikes, _, label_idx = next(iter(test_loader))
 label_name = LABELS[label_idx[0]]
 
