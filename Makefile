@@ -2,13 +2,10 @@ SHELL := /bin/bash
 
 .PHONY: clean data setup
 
-# Setup virtual environment and install dependencies
+# Setup virtual environment and install dependencies, then enter activated shell
 setup:
-	@echo "Setting up virtual environment..."
 	@python3 -m venv venv
-	@echo "Installing requirements..."
-	@source ./venv/bin/activate && pip install -r requirements.txt
-	@echo "Setup complete."
+	@bash -c "source ./venv/bin/activate && pip install -r requirements.txt && echo 'Setup complete. Entering activated shell...' && exec bash -i"
 
 # Fetch data using fetch_data.py
 data:
