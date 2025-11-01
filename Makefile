@@ -7,8 +7,13 @@ data:
 	@echo "Fetching data..."
 	@python3 fetch_data.py
 
-# Run inference script
+# Run test script
 test:
+	@echo "Running test..."
+	@cd src && python3 test.py
+
+# Run inference script
+infer:
 	@echo "Running inference..."
 	@cd src && python3 infer.py
 
