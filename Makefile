@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: clean data setup
+.PHONY: clean data
 
 # Fetch data using fetch_data.py
 data:
