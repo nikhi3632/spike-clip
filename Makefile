@@ -8,9 +8,9 @@ data:
 	@python3 fetch_data.py
 
 # Run inference script
-test: data
+test:
 	@echo "Running inference..."
-	@python3 src/infer.py
+	@cd src && python3 infer.py
 
 # Remove Python bytecode caches and compiled files across the repo
 clean:
