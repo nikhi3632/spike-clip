@@ -8,7 +8,7 @@ data:
 	@python3 fetch_data.py
 
 # Run inference script
-test:
+test: data
 	@echo "Running inference..."
 	@python3 src/infer.py
 
