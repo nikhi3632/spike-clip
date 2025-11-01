@@ -24,17 +24,19 @@ print(f"Running inference on {device}...")
 # ----------------------------
 # Dataset
 # ----------------------------
-LABELS = ['accordion','airplanes','anchor','ant','barrel','bass','beaver','binocular','bonsai','brain','brontosaurus',
-          'buddha','butterfly','camera','cannon','car','ceilingfan','cellphone','chair','chandelier','cougarbody',
-          'cougarface','crab','crayfish','crocodile','crocodilehead','cup','dalmatian','dollarbill','dolphin',
-          'dragonfly','electricguitar','elephant','emu','euphonium','ewer','faces','ferry','flamingo','flamingohead',
-          'garfield','gerenuk','gramophone','grandpiano','hawksbill','headphone','hedgehog','helicopter','ibis',
-          'inlineskate','joshuatree','kangaroo','ketch','lamp','laptop','Leopards','llama','lobster','lotus',
-          'mandolin','mayfly','menorah','metronome','minaret','Motorbikes','nautilus','octopus','okapi','pagoda',
-          'panda','pigeon','pizza','platypus','pyramid','revolver','rhino','rooster','saxophone','schooner',
-          'scissors','scorpion','seahorse','snoopy','soccerball','stapler','starfish','stegosaurus','stopsign',
-          'strawberry','sunflower','tick','trilobite','umbrella','watch','waterlilly','wheelchair','wildcat',
-          'windsorchair','wrench','yinyang','background']
+LABELS = [
+    'accordion','airplanes','anchor','ant','barrel','bass','beaver','binocular','bonsai','brain','brontosaurus',
+    'buddha','butterfly','camera','cannon','car','ceilingfan','cellphone','chair','chandelier','cougarbody',
+    'cougarface','crab','crayfish','crocodile','crocodilehead','cup','dalmatian','dollarbill','dolphin',
+    'dragonfly','electricguitar','elephant','emu','euphonium','ewer','faces','ferry','flamingo','flamingohead',
+    'garfield','gerenuk','gramophone','grandpiano','hawksbill','headphone','hedgehog','helicopter','ibis',
+    'inlineskate','joshuatree','kangaroo','ketch','lamp','laptop','Leopards','llama','lobster','lotus',
+    'mandolin','mayfly','menorah','metronome','minaret','Motorbikes','nautilus','octopus','okapi','pagoda',
+    'panda','pigeon','pizza','platypus','pyramid','revolver','rhino','rooster','saxophone','schooner',
+    'scissors','scorpion','seahorse','snoopy','soccerball','stapler','starfish','stegosaurus','stopsign',
+    'strawberry','sunflower','tick','trilobite','umbrella','watch','waterlilly','wheelchair','wildcat',
+    'windsorchair','wrench','yinyang','background'
+]
 
 test_loader = get_loader(DATA_DIR, LABELS, split="test", batch_size=BATCH_SIZE)
 
@@ -42,15 +44,25 @@ test_loader = get_loader(DATA_DIR, LABELS, split="test", batch_size=BATCH_SIZE)
 # Model
 # ----------------------------
 model = CoarseSNN(time_steps=TIME_STEPS).to(device)
-checkpoint_path = "checkpoints/coarse_snn.pth"
+
+# Prefer best model if exists
+best_ckpt = "checkpoints/best_coarse_snn.pth"
+final_ckpt = "checkpoints/coarse_snn_final.pth"
+checkpoint_path = best_ckpt if os.path.exists(best_ckpt) else final_ckpt
+
+if not os.path.exists(checkpoint_path):
+    raise FileNotFoundError("No trained model found in checkpoints/. Please run train.py first.")
+
 model.load_state_dict(torch.load(checkpoint_path, map_location=device))
 model.eval()
+print(f"Loaded model: {checkpoint_path}")
 
 # ----------------------------
 # Inference + Metrics
 # ----------------------------
 latencies, total_samples = [], 0
 torch.cuda.reset_peak_memory_stats()
+start_total = time.time()
 
 with torch.no_grad():
     for spikes, _, _ in tqdm(test_loader, desc="Inference"):
@@ -58,15 +70,17 @@ with torch.no_grad():
 
         start = time.time()
         outputs = model(spikes)
+        end = time.time()
 
-        # Normalize output for fairness
-        omin = outputs.amin(dim=(2,3), keepdim=True)
-        omax = outputs.amax(dim=(2,3), keepdim=True)
+        # Normalize output
+        omin = outputs.amin(dim=(2, 3), keepdim=True)
+        omax = outputs.amax(dim=(2, 3), keepdim=True)
         outputs = (outputs - omin) / (omax - omin + 1e-6)
 
-        end = time.time()
         latencies.append(end - start)
         total_samples += spikes.size(0)
+
+total_time = time.time() - start_total
 
 # ----------------------------
 # Compute Metrics
@@ -78,17 +92,22 @@ power_usage = compute_power_usage()
 
 metrics_text = (
     "\n===== INFERENCE METRICS =====\n"
+    f"Model checkpoint: {os.path.basename(checkpoint_path)}\n"
+    f"Total Samples: {total_samples}\n"
+    f"Total Time: {total_time:.2f}s\n"
     f"Avg Latency per batch: {avg_latency:.4f}s ± {std_latency:.4f}s\n"
     f"Throughput: {throughput:.2f} samples/sec\n"
     f"GPU Memory Usage: {memory_usage:.2f} MB\n"
     f"Average Power Draw: {power_usage:.2f} W\n"
+    f"Timestamp: {time.ctime()}\n"
     "==============================\n"
 )
 
 print(metrics_text)
 
-# Save
-with open(METRICS_FILE, "w") as f:
+# Save and append
+os.makedirs("checkpoints", exist_ok=True)
+with open(METRICS_FILE, "a") as f:
     f.write(metrics_text)
 
-print(f"Inference metrics saved to {METRICS_FILE}")
+print(f"✅ Inference metrics appended to {METRICS_FILE}")

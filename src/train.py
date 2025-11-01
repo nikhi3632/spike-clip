@@ -15,7 +15,7 @@ from models.coarse_reconstruction import CoarseSNN
 # Config
 # ----------------------------
 DATA_DIR = os.path.join(os.path.dirname(__file__), "../data/u-caltech")
-EPOCHS = 5
+EPOCHS = 10
 LEARNING_RATE = 1e-3
 TIME_STEPS = 25
 BATCH_SIZE = 8
@@ -55,13 +55,10 @@ train_loader = get_loader(DATA_DIR, LABELS, split="train", batch_size=BATCH_SIZE
 # Helper functions
 # ----------------------------
 def make_pseudo_target(spikes):
-    """
-    spikes: [B, T, H, W] float
-    returns: [B, 3, H, W] normalized [0,1]
-    """
+    """Temporal mean + normalization"""
     tmean = spikes.mean(dim=1, keepdim=True)
-    tmin = tmean.amin(dim=(2, 3), keepdim=True)
-    tmax = tmean.amax(dim=(2, 3), keepdim=True)
+    tmin = tmean.amin(dim=(2,3), keepdim=True)
+    tmax = tmean.amax(dim=(2,3), keepdim=True)
     target = (tmean - tmin) / (tmax - tmin + 1e-6)
     target = F.avg_pool2d(target, kernel_size=3, stride=1, padding=1)
     return target.repeat(1, 3, 1, 1)
@@ -71,10 +68,10 @@ def sobel_edges(x):
     ky = kx.transpose(2,3)
     gx = F.conv2d(x, kx, padding=1, groups=x.shape[1])
     gy = F.conv2d(x, ky, padding=1, groups=x.shape[1])
-    return torch.sqrt(gx * gx + gy * gy + 1e-6)
+    return torch.sqrt(gx*gx + gy*gy + 1e-6)
 
 def tv_loss(x):
-    return (x[:, :, :, :-1] - x[:, :, :, 1:]).abs().mean() + (x[:, :, :-1, :] - x[:, :, 1:, :]).abs().mean()
+    return (x[:,:,:, :-1] - x[:,:,:,1:]).abs().mean() + (x[:,:,:-1,:] - x[:,:,1:,:]).abs().mean()
 
 # ----------------------------
 # Model, Loss, Optimizer
@@ -85,18 +82,21 @@ optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 scaler = GradScaler(enabled=(device == "cuda"))
 
 # ----------------------------
-# Logging Setup
+# Logging setup
 # ----------------------------
 with open(LOG_FILE, "w") as f:
     f.write("==== TRAINING LOG ====\n")
     f.write(f"Timestamp: {time.ctime()}\nDevice: {device}\nDataset: {DATA_DIR}\n")
     f.write(f"EPOCHS={EPOCHS}, LR={LEARNING_RATE}, TIME_STEPS={TIME_STEPS}\n")
     f.write(f"BATCH_SIZE={BATCH_SIZE}, WORKERS={NUM_WORKERS}\n\n")
-    f.write("Epoch\tAvgLoss\tTime(s)\n")
+    f.write("Epoch\tAvgLoss\tTime(s)\tBest?\n")
 
 # ----------------------------
-# Training Loop
+# Training Loop (with best model saving)
 # ----------------------------
+best_loss = float("inf")
+os.makedirs("checkpoints", exist_ok=True)
+
 for epoch in range(EPOCHS):
     epoch_start = time.time()
     model.train()
@@ -109,7 +109,7 @@ for epoch in range(EPOCHS):
 
         optimizer.zero_grad()
         with autocast(device_type='cuda', enabled=(device == "cuda")):
-            outputs = model(spikes)  # raw (no sigmoid)
+            outputs = model(spikes)
             omin = outputs.amin(dim=(2,3), keepdim=True)
             omax = outputs.amax(dim=(2,3), keepdim=True)
             outputs_n = (outputs - omin) / (omax - omin + 1e-6)
@@ -120,7 +120,7 @@ for epoch in range(EPOCHS):
             l_edge = F.l1_loss(edges_out, edges_tgt)
             l_tv = tv_loss(outputs_n)
 
-            loss = l_rec + 0.1 * l_edge + 0.001 * l_tv
+            loss = l_rec + 0.1*l_edge + 0.001*l_tv
 
         scaler.scale(loss).backward()
         scaler.step(optimizer)
@@ -129,24 +129,31 @@ for epoch in range(EPOCHS):
         running_loss += loss.item()
         pbar.set_postfix({"Loss": running_loss / (pbar.n + 1)})
 
-        # Print sanity once
         if i == 0 and epoch == 0:
             print("Target stats:", float(target.mean()), float(target.min()), float(target.max()))
             print("Output stats:", float(outputs_n.mean()), float(outputs_n.min()), float(outputs_n.max()))
 
+    # Epoch summary
     epoch_time = time.time() - epoch_start
     avg_loss = running_loss / len(train_loader)
-    print(f"Epoch [{epoch+1}/{EPOCHS}] Avg Loss: {avg_loss:.4f} | Time: {epoch_time:.2f}s")
+    is_best = avg_loss < best_loss
 
+    print(f"Epoch [{epoch+1}/{EPOCHS}] Avg Loss: {avg_loss:.4f} | Time: {epoch_time:.2f}s {'<- Best so far' if is_best else ''}")
+
+    # Save best model
+    if is_best:
+        best_loss = avg_loss
+        best_path = "checkpoints/best_coarse_snn.pth"
+        torch.save(model.state_dict(), best_path)
+
+    # Log to file
     with open(LOG_FILE, "a") as f:
-        f.write(f"{epoch+1}\t{avg_loss:.4f}\t{epoch_time:.2f}\n")
+        f.write(f"{epoch+1}\t{avg_loss:.4f}\t{epoch_time:.2f}\t{'YES' if is_best else 'NO'}\n")
 
-# ----------------------------
-# Save model
-# ----------------------------
-os.makedirs("checkpoints", exist_ok=True)
-torch.save(model.state_dict(), "checkpoints/coarse_snn.pth")
-print("✅ Stage 1 model saved to checkpoints/coarse_snn.pth")
+# Final save
+final_path = "checkpoints/coarse_snn_final.pth"
+torch.save(model.state_dict(), final_path)
+print(f"✅ Training complete. Best model: {best_path} | Final model: {final_path}")
 
 with open(LOG_FILE, "a") as f:
-    f.write("Training completed.\n")
+    f.write(f"Training completed.\nBest loss={best_loss:.4f}\n")

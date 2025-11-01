@@ -1,13 +1,13 @@
 ===== INFERENCE METRICS =====
-Timestamp: Fri Oct 31 19:14:12 2025
+Timestamp: Sat Nov  1 02:58:08 2025
 Device: cuda
 Dataset: /home/ubuntu/spike-clip/src/../data/u-caltech
 Number of classes: 101
 Labels: ['accordion', 'airplanes', 'anchor', 'ant', 'barrel', 'bass', 'beaver', 'binocular', 'bonsai', 'brain', 'brontosaurus', 'buddha', 'butterfly', 'camera', 'cannon', 'car', 'ceilingfan', 'cellphone', 'chair', 'chandelier', 'cougarbody', 'cougarface', 'crab', 'crayfish', 'crocodile', 'crocodilehead', 'cup', 'dalmatian', 'dollarbill', 'dolphin', 'dragonfly', 'electricguitar', 'elephant', 'emu', 'euphonium', 'ewer', 'faces', 'ferry', 'flamingo', 'flamingohead', 'garfield', 'gerenuk', 'gramophone', 'grandpiano', 'hawksbill', 'headphone', 'hedgehog', 'helicopter', 'ibis', 'inlineskate', 'joshuatree', 'kangaroo', 'ketch', 'lamp', 'laptop', 'Leopards', 'llama', 'lobster', 'lotus', 'mandolin', 'mayfly', 'menorah', 'metronome', 'minaret', 'Motorbikes', 'nautilus', 'octopus', 'okapi', 'pagoda', 'panda', 'pigeon', 'pizza', 'platypus', 'pyramid', 'revolver', 'rhino', 'rooster', 'saxophone', 'schooner', 'scissors', 'scorpion', 'seahorse', 'snoopy', 'soccerball', 'stapler', 'starfish', 'stegosaurus', 'stopsign', 'strawberry', 'sunflower', 'tick', 'trilobite', 'umbrella', 'watch', 'waterlilly', 'wheelchair', 'wildcat', 'windsorchair', 'wrench', 'yinyang', 'background']
 TIME_STEPS: 25, BATCH_SIZE: 8
 
-Avg Latency per batch: 0.1098s ± 0.0544s
+Avg Latency per batch: 0.1098s ± 0.0538s
 Throughput: 72.84 samples/sec
 GPU Memory Usage: 704.27 MB
-Average Power Draw: 348.50 W
+Average Power Draw: 350.16 W
 ==============================
